@@ -11,7 +11,6 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 
-
 """
     https://github.com/ChunhuanLin/deform_conv_pytorch/blob/master/deform_conv.py
 """
@@ -45,31 +44,96 @@ class DeformConv2D(nn.Module):
         # (b, 2N, h, w)
         p = self._get_p(offset, dtype)
 
+        print('p size:', p.size())
+        print('p = ', p)
+
         # (b, h, w, 2N)
         p = p.contiguous().permute(0, 2, 3, 1)
+
+        print('p size:', p.size())
+
+        """
+            if q is float, using bilinear interpolate, it has four integer position.
+            The four position is left top, right top, left bottom, right bottom, defined as q_lt, q_rb, q_lb, q_rt
+        """
         q_lt = Variable(p.data, requires_grad=False).floor()
+
+        """
+            *┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄→x
+            ┊  .(x, y)   .(x+1, y)
+            ┊   
+            ┊  .(x, y+1) .(x+1, y+1)
+            ┊
+            ↓
+            y
+            
+            for right bottom point, it'x = left top'y + 1, it'y = left top'y + 1
+        """
         q_rb = q_lt + 1
 
+        """
+            x.size(2) is h, x.size(3) is w, make 0 <= p_y <= h - 1, 0 <= p_x <= w-1
+        """
         q_lt = torch.cat([torch.clamp(q_lt[..., :N], 0, x.size(2) - 1), torch.clamp(q_lt[..., N:], 0, x.size(3) - 1)],
                          dim=-1).long()
+
+        """
+        
+        """
         q_rb = torch.cat([torch.clamp(q_rb[..., :N], 0, x.size(2) - 1), torch.clamp(q_rb[..., N:], 0, x.size(3) - 1)],
                          dim=-1).long()
+
+        """
+            For the left bottom point, it'x is equal to left top, it'y is equal to right bottom
+        """
         q_lb = torch.cat([q_lt[..., :N], q_rb[..., N:]], -1)
+
+        """
+            y from q_rb, x from q_lt
+            for right top point, 
+        """
         q_rt = torch.cat([q_rb[..., :N], q_lt[..., N:]], -1)
 
+        print('q_lt size:', q_lt.size())
+        print('q_rb size:', q_rb.size())
+        print('q_lb size:', q_lb.size())
+        print('q_rt size:', q_rt.size())
+        print('N = ', N)
+        print('q_lt[..., :] size:', q_lt[..., :N].size())
+
+
+        """
+            find p_y <= padding or p_y >= h - 1 - padding, find p_x <= padding or p_x >= x - 1 - padding
+            which make the point in the area where the pixel value is meaningful.
+        """
         # (b, h, w, N)
         mask = torch.cat([p[..., :N].lt(self.padding) + p[..., :N].gt(x.size(2) - 1 - self.padding),
                           p[..., N:].lt(self.padding) + p[..., N:].gt(x.size(3) - 1 - self.padding)], dim=-1).type_as(p)
         mask = mask.detach()
-        floor_p = p - (p - torch.floor(p))
+        print('mask:', mask)
+
+        floor_p = torch.floor(p)
+        print('floor_p = ', floor_p)
+
+
+        """
+           when mask is 1, take floor_p;
+           when mask is 0, take original p.
+        """
         p = p * (1 - mask) + floor_p * mask
         p = torch.cat([torch.clamp(p[..., :N], 0, x.size(2) - 1), torch.clamp(p[..., N:], 0, x.size(3) - 1)], dim=-1)
 
+        """
+            In the paper, G(q, p) = g(q_x, p_x) * g(q_y, p_y)
+            g(a, b) = max(0, 1-|a-b|)
+        """
         # bilinear kernel (b, h, w, N)
         g_lt = (1 + (q_lt[..., :N].type_as(p) - p[..., :N])) * (1 + (q_lt[..., N:].type_as(p) - p[..., N:]))
         g_rb = (1 - (q_rb[..., :N].type_as(p) - p[..., :N])) * (1 - (q_rb[..., N:].type_as(p) - p[..., N:]))
         g_lb = (1 + (q_lb[..., :N].type_as(p) - p[..., :N])) * (1 - (q_lb[..., N:].type_as(p) - p[..., N:]))
         g_rt = (1 - (q_rt[..., :N].type_as(p) - p[..., :N])) * (1 + (q_rt[..., N:].type_as(p) - p[..., N:]))
+
+        print('g_lt = ', g_lt)
 
         # (b, c, h, w, N)
         x_q_lt = self._get_x_q(x, q_lt, N)
@@ -77,15 +141,22 @@ class DeformConv2D(nn.Module):
         x_q_lb = self._get_x_q(x, q_lb, N)
         x_q_rt = self._get_x_q(x, q_rt, N)
 
+
+        """
+            In the paper, x(p) = ΣG(p, q) * x(q), G is bilinear kernal
+        """
         # (b, c, h, w, N)
         x_offset = g_lt.unsqueeze(dim=1) * x_q_lt + \
                    g_rb.unsqueeze(dim=1) * x_q_rb + \
                    g_lb.unsqueeze(dim=1) * x_q_lb + \
                    g_rt.unsqueeze(dim=1) * x_q_rt
 
-        x_offset = self._reshape_x_offset(x_offset, ks)
-        out = self.conv_kernel(x_offset)
+        print('#01 x_offset size:', x_offset.size())
 
+        x_offset = self._reshape_x_offset(x_offset, ks)
+        print('#02 x_offset size:', x_offset.size())
+
+        out = self.conv_kernel(x_offset)
         return out
 
     def _get_p_n(self, N, dtype):
@@ -113,8 +184,12 @@ class DeformConv2D(nn.Module):
 
         # (1, 2N, 1, 1)
         p_n = self._get_p_n(N, dtype)
+        print('p_n:', p_n)
+        print('p_n size:', p_n.size())
         # (1, 2N, h, w)
         p_0 = self._get_p_0(h, w, N, dtype)
+        print('p_0:', p_0)
+        print('p_0 size:', p_0.size())
         p = p_0 + p_n + offset
         return p
 
