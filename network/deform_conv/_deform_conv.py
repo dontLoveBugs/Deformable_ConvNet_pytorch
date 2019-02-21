@@ -12,15 +12,37 @@ import torch.nn as nn
 
 
 class DeformConv2D(nn.Module):
-    def __init__(self, inc, outc, kernel_size=3, padding=1, stride=1, bias=None):
+    def __init__(self, inc, outc, kernel_size=3, padding=1, stride=1, bias=None, lr_ratio=1.0):
         super(DeformConv2D, self).__init__()
         self.kernel_size = kernel_size
         self.padding = padding
         self.stride = stride
         self.zero_padding = nn.ZeroPad2d(padding)
-        self.conv_kernel = nn.Conv2d(inc, outc, kernel_size=kernel_size, stride=kernel_size, bias=bias)
 
-    def forward(self, x, offset):
+        self.offset_conv = nn.Conv2d(inc, 2 * kernel_size * kernel_size, kernel_size=3, padding=1, stride=stride)
+        nn.init.constant_(self.offset_conv.weight, 0)  # the offset learning are initialized with zero weights
+        self.offset_conv.register_backward_hook(self._set_lr)
+
+        self.conv = nn.Conv2d(inc, outc, kernel_size=kernel_size, stride=kernel_size, bias=bias)
+
+        self.lr_ratio = lr_ratio
+
+    def _set_lr(self, module, grad_input, grad_output):
+        # print('grad input:', grad_input)
+        new_grad_input = []
+
+        for i in range(len(grad_input)):
+            if grad_input[i] is not None:
+                new_grad_input.append(grad_input[i] * self.lr_ratio)
+            else:
+                new_grad_input.append(grad_input[i])
+
+        new_grad_input = tuple(new_grad_input)
+        # print('new grad input:', new_grad_input)
+        return new_grad_input
+
+    def forward(self, x):
+        offset = self.offset_conv(x)
         dtype = offset.data.type()
         ks = self.kernel_size
         N = offset.size(1) // 2
@@ -140,8 +162,8 @@ class DeformConv2D(nn.Module):
 
         x_offset = self._reshape_x_offset(x_offset, ks)
 
-        out = self.conv_kernel(x_offset)
-        return x_offset
+        out = self.conv(x_offset)
+        return out
 
     def _get_p_n(self, N, dtype):
         """
@@ -214,26 +236,34 @@ from time import time
 if __name__ == '__main__':
     x = torch.randn(4, 3, 255, 255)
 
-    p_conv = nn.Conv2d(3, 2 * 3 * 3, kernel_size=3, padding=1, stride=1)
-    conv = nn.Conv2d(3, 64, kernel_size=3, stride=3, bias=False)
-
-    d_conv1 = DeformConv2D(3, 64)
-    d_conv2 = DeformConv2D_ori(3, 64)
-
-    offset = p_conv(x)
-
-    end = time()
-    y1 = conv(d_conv1(x, offset))
-    end = time() - end
-    print('#1 speed = ', end)
-
-    end = time()
-    y2 = conv(d_conv2(x, offset))
-    end = time() - end
-    print('#2 speed = ', end)
+    # p_conv = nn.Conv2d(3, 2 * 3 * 3, kernel_size=3, padding=1, stride=1)
+    # conv = nn.Conv2d(3, 64, kernel_size=3, stride=3, bias=False)
+    #
+    # d_conv1 = DeformConv2D(3, 64)
+    # d_conv2 = DeformConv2D_ori(3, 64)
+    #
+    # offset = p_conv(x)
+    #
+    # end = time()
+    # y1 = conv(d_conv1(x, offset))
+    # end = time() - end
+    # print('#1 speed = ', end)
+    #
+    # end = time()
+    # y2 = conv(d_conv2(x, offset))
+    # end = time() - end
+    # print('#2 speed = ', end)
 
     # mask = (y1 == y2)
     # print(mask)
     # print(torch.max(mask))
     # print(torch.min(mask))
 
+    x = torch.randn(4, 3, 255, 255)
+    d_conv = DeformConv2D(3, 64)
+
+    end = time()
+    y = d_conv(x)
+    end = time() - end
+    print('speed = ', end)
+    print(y.size())

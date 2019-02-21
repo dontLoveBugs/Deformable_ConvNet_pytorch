@@ -44,7 +44,7 @@ class DeformConv2d(nn.Module):
 
         for i in range(len(grad_input)):
             if grad_input[i] is not None:
-                new_grad_input.append(grad_input[i] * 0.1)
+                new_grad_input.append(grad_input[i] * self.lr_ratio)
             else:
                 new_grad_input.append(grad_input[i])
 
