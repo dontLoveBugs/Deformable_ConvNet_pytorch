@@ -42,7 +42,7 @@ def parse_command():
     parser.add_argument('--seed', type=int, default=1, metavar='S',
                         help='random seed (default: 1)')
     parser.add_argument('--gpu', default=None, type=str, help='if not none, use Single GPU')
-    parser.add_argument('--print_freq', type=int, default=10, metavar='N',
+    parser.add_argument('--print_freq', type=int, default=50, metavar='N',
                         help='how many batches to wait before logging training status')
     args = parser.parse_args()
 
@@ -158,17 +158,17 @@ def main():
 
         train_loss += loss.data[0]
         pred = output.data.max(1, keepdim=True)[1]  # get the index of the max log-probability
-        per_acc = pred.eq(target.data.view_as(pred)).cpu().sum()
-        train_acc += per_acc
+        per_acc = pred.eq(target.data.view_as(pred)).sum()
+        train_acc += per_acc.cpu()
 
         if it % args.print_freq == 0:
             print('=> output: {}'.format(save_dir))
             print('Train Iter: [{0}/{1}]\t'
                   'Loss={Loss:.5f} '
                   'Accuracy={Acc:.5f}'
-                  .format(it, max_iter, Loss=loss, Acc=per_acc / args.batch_size))
+                  .format(it, max_iter, Loss=loss, Acc=float(per_acc) / args.batch_size))
             logger.add_scalar('Train/Loss', loss, it)
-            logger.add_scalar('Train/Acc', per_acc / args.batch_size, it)
+            # logger.add_scalar('Train/Acc', per_acc / args.batch_size, it)
 
         if it % iter_save == 0:
             epoch = it // iter_save
@@ -180,6 +180,8 @@ def main():
                 logger.add_scalar('Lr/lr_' + str(i), old_lr, it)
 
             # remember change of train/test loss and train/test acc
+            train_loss = float(train_loss)
+            train_acc = float(train_acc)
             train_loss /= len(train_loader.dataset)
             train_acc /= len(train_loader.dataset)
 
@@ -212,12 +214,14 @@ def test(model, test_loader, epoch, logger=None):
         output = model(data)
         test_loss += F.nll_loss(output, target, size_average=False).data[0]  # sum up batch loss
         pred = output.data.max(1, keepdim=True)[1]  # get the index of the max log-probability
-        correct += pred.eq(target.data.view_as(pred)).cpu().sum()
+        correct += pred.eq(target.data.view_as(pred)).sum().cpu()
 
+    test_loss = float(test_loss)
+    correct = float(correct)
     test_loss /= len(test_loader.dataset)
     correct /= len(test_loader.dataset)
 
-    print('\nTest set: Average loss: {:.4f}, Accuracy: {:.0f}%\n'.format(test_loss, correct))
+    print('\nTest set: Average loss: {:.4f}, Accuracy: {:.0f}%\n'.format(test_loss, 100. * correct))
 
     logger.add_scalar('Test/loss', test_loss, epoch)
     logger.add_scalar('Test/acc', correct, epoch)
