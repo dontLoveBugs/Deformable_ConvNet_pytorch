@@ -83,7 +83,7 @@ class DeformNet(nn.Module):
 
 class DeformNet_v2(nn.Module):
     def __init__(self):
-        super(DeformNet, self).__init__()
+        super(DeformNet_v2, self).__init__()
         self.conv1 = nn.Conv2d(1, 32, kernel_size=3, padding=1)
         self.bn1 = nn.BatchNorm2d(32)
 
@@ -93,7 +93,7 @@ class DeformNet_v2(nn.Module):
         self.conv3 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
         self.bn3 = nn.BatchNorm2d(128)
 
-        self.conv4 = deform_conv_v2.DeformConv2D(128, 128, kernel_size=3, padding=1)
+        self.conv4 = deform_conv_v2.DeformConv2D(128, 128, kernel_size=3, padding=1, modulation=True)
         self.bn4 = nn.BatchNorm2d(128)
 
         self.classifier = nn.Linear(128, 10)

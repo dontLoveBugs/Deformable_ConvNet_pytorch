@@ -13,13 +13,13 @@ from torch import nn
 """
 
 
-class DeformConv2d(nn.Module):
+class DeformConv2D(nn.Module):
     def __init__(self, inc, outc, kernel_size=3, padding=1, stride=1, bias=None, modulation=False, lr_ratio = 0.1):
         """
         Args:
             modulation (bool, optional): If True, Modulated Defomable Convolution (Deformable ConvNets v2).
         """
-        super(DeformConv2d, self).__init__()
+        super(DeformConv2D, self).__init__()
         self.kernel_size = kernel_size
         self.padding = padding
         self.stride = stride

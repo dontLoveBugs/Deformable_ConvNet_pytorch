@@ -26,7 +26,7 @@ def parse_command():
 
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
     parser.add_argument('--resume', default=None, type=str, metavar='PATH')
-    parser.add_argument('--model', type=str, default='deform', choices=model_names)
+    parser.add_argument('--model', type=str, default='deform_v2', choices=model_names)
     parser.add_argument('--batch-size', type=int, default=32, metavar='N',
                         help='input batch size for training (default: 32)')
     parser.add_argument('--test-batch-size', type=int, default=32, metavar='N',
